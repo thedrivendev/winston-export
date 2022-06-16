@@ -1,10 +1,9 @@
-const AWS = require('aws-sdk');
-const SES = new AWS.SES();
-
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const mimemessage = require('mimemessage');
 
 const s3Client = new S3Client({ region: 'us-east-1' });
+const sesClient = new SESv2Client({ region: 'us-east-1' });
 
 const getS3Object = ({ s3Client, Bucket, Key }) =>
   new Promise(async (resolve, reject) => {
@@ -24,9 +23,10 @@ const getS3Object = ({ s3Client, Bucket, Key }) =>
       // Each chunk is a Buffer instance
       response.Body.on('data', chunk => responseDataChunks.push(chunk));
 
-      // Once the stream has no more data, join the chunks into a single buffer and return buffer
+      // Once the stream has no more data, join the chunks into a string and return the string
       response.Body.once('end', () =>
-        resolve(Buffer.concat(responseDataChunks))
+        // resolve(responseDataChunks.toString('base64'))
+        resolve(Buffer.from(responseDataChunks))
       );
     } catch (err) {
       // Handle the error or throw
@@ -35,14 +35,27 @@ const getS3Object = ({ s3Client, Bucket, Key }) =>
   });
 
 module.exports = async event => {
-  // Get file from S3
-  const fileData = await getS3Object({
-    s3Client,
-    Bucket: 'farbankexport',
-    Key: 'inventory.xlsx',
-  });
+  // (async event => {
+  // // Get file from S3
+  // const file = await s3Client.send(
+  //   new GetObjectCommand({
+  //     Bucket: 'farbankexport',
+  //     Key: 'inventory.xlsx',
+  //   })
+  // );
 
-  const fileBody = fileData.toString('base64');
+  // // Get file from S3
+  // const fileData = await getS3Object({
+  //   s3Client,
+  //   Bucket: 'farbankexport',
+  //   Key: 'inventory.xlsx',
+  // });
+  // // console.log('fileData');
+  // // console.log(Object.keys(file));
+  // // console.log(fileData);
+  // console.log(typeof fileData);
+
+  // const fileBody = fileData.toString('base64').replace(/([^\0]{76})/g, '$1\n');
   // console.log('typeof fileBody');
   // console.log(typeof fileBody);
 
@@ -70,37 +83,44 @@ module.exports = async event => {
       '   <h1>Farbank Inventory Export</h1>' +
       '   <p>Please see the attached file for current Farbank Inventory levels.</p>' +
       ' </body>' +
-      '</html>' +
-      '' +
-      '',
+      '</html>',
   });
   const plainEntity = mimemessage.factory({
-    body: `Please see the attached file for current Farbank Inventory levels.
-    `,
+    body: 'Please see the attached file for current Farbank Inventory levels.',
   });
-  alternateEntity.body.push(plainEntity);
   alternateEntity.body.push(htmlEntity);
+  alternateEntity.body.push(plainEntity);
 
   mailContent.body.push(alternateEntity);
 
-  // Set attachment
-  const attachmentEntity = mimemessage.factory({
-    contentType: 'text/plain',
-    contentTransferEncoding: 'base64',
-    body: fileBody,
-  });
-  attachmentEntity.header(
-    'Content-Disposition',
-    'attachment; filename="inventory.xlsx"'
-  );
-  mailContent.body.push(attachmentEntity);
-
   const mailData = mailContent.toString();
+  console.log(mailData);
+  // return;
+  // const attachmentEntity = mimemessage.factory({
+  //   contentType: 'text/plain',
+  //   contentTransferEncoding: 'base64',
+  //   body: fileBody,
+  // });
+  // attachmentEntity.header(
+  //   'Content-Disposition',
+  //   'attachment; filename="inventory.xlsx"'
+  // );
+  // mailContent.body.push(attachmentEntity);
 
-  const response = await SES.sendRawEmail({
-    RawMessage: { Data: mailData },
-  }).promise();
-  console.log(response);
+  // Send email
+  const sendEmailResponse = await sesClient
+    .send(
+      new SendEmailCommand({
+        Content: {
+          Raw: {
+            Data: Buffer.from(Data).toString('base64'),
+          },
+        },
+      })
+    )
+    .catch(error => console.log(error));
+
+  console.log(sendEmailResponse.$metadata);
 
   return {
     statusCode: 200,
@@ -113,3 +133,4 @@ module.exports = async event => {
     ),
   };
 };
+// })();
