@@ -1,50 +1,20 @@
 const AWS = require('aws-sdk');
-const SES = new AWS.SES();
-
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
+const getS3Object = require('./getS3Object');
 const mimemessage = require('mimemessage');
 
 const s3Client = new S3Client({ region: 'us-east-1' });
-
-const getS3Object = ({ s3Client, Bucket, Key }) =>
-  new Promise(async (resolve, reject) => {
-    const getObjectCommand = new GetObjectCommand({ Bucket, Key });
-
-    try {
-      const response = await s3Client.send(getObjectCommand);
-
-      // Store all of data chunks returned from the response data stream
-      // into an array then use Array#join() to use the returned contents as a String
-      let responseDataChunks = [];
-
-      // Handle an error while streaming the response body
-      response.Body.once('error', err => reject(err));
-
-      // Attach a 'data' listener to add the chunks of data to our array
-      // Each chunk is a Buffer instance
-      response.Body.on('data', chunk => responseDataChunks.push(chunk));
-
-      // Once the stream has no more data, join the chunks into a single buffer and return buffer
-      response.Body.once('end', () =>
-        resolve(Buffer.concat(responseDataChunks))
-      );
-    } catch (err) {
-      // Handle the error or throw
-      return reject(err);
-    }
-  });
+const SES = new AWS.SES();
 
 module.exports = async event => {
   // Get file from S3
   const fileData = await getS3Object({
     s3Client,
     Bucket: 'farbankexport',
-    Key: 'inventory.xlsx',
+    Key: 'data.xlsx',
   });
 
   const fileBody = fileData.toString('base64');
-  // console.log('typeof fileBody');
-  // console.log(typeof fileBody);
 
   // Prepare email
   const mailContent = mimemessage.factory({
@@ -53,7 +23,7 @@ module.exports = async event => {
   });
 
   mailContent.header('From', 'thomas@getakamai.com');
-  mailContent.header('To', process.env.recipient);
+  mailContent.header('To', `${process.env.recipient}, thomas@getakamai.com`);
   mailContent.header('Subject', 'Farbank Inventory Export');
 
   const alternateEntity = mimemessage.factory({
@@ -91,7 +61,7 @@ module.exports = async event => {
   });
   attachmentEntity.header(
     'Content-Disposition',
-    'attachment; filename="inventory.xlsx"'
+    'attachment; filename="data.xlsx"'
   );
   mailContent.body.push(attachmentEntity);
 
