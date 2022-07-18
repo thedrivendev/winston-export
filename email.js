@@ -23,7 +23,10 @@ module.exports = async event => {
   });
 
   mailContent.header('From', 'thomas@getakamai.com');
-  mailContent.header('To', `${process.env.recipient}, thomas@getakamai.com`);
+  mailContent.header(
+    'To',
+    `${process.env.sage}, ${process.env.rio}, ${process.env.redington}, thomas@getakamai.com`
+  );
   mailContent.header('Subject', 'Farbank Inventory Export');
 
   const alternateEntity = mimemessage.factory({

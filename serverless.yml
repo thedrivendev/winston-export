@@ -5,6 +5,9 @@ frameworkVersion: '3'
 
 useDotenv: true
 
+package:
+  individually: true
+
 provider:
   name: aws
   runtime: nodejs14.x
@@ -30,7 +33,9 @@ provider:
   environment:
     username: ${env:USERNAME}
     password: ${env:PASSWORD}
-    recipient: ${env:RECIPIENT}
+    sage: ${env:SAGE}
+    rio: ${env:RIO}
+    redington: ${env:REDINGTON}
 
 functions:
   export:
