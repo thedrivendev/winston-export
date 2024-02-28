@@ -1,5 +1,5 @@
-service: farbank-export
-app: farbank-export
+service: winston-export
+app: winston-export
 org: akamaidigital
 frameworkVersion: '3'
 
@@ -7,10 +7,12 @@ useDotenv: true
 
 package:
   individually: true
+  include:
+    - 'integrations/*'
 
 provider:
   name: aws
-  runtime: nodejs14.x
+  runtime: nodejs20.x
   stage: dev
   region: us-east-1
   iam:
@@ -23,7 +25,7 @@ provider:
             - s3:GetObject
             - s3:PutsObject
           Resource:
-            - arn:aws:s3:::farbankexport/*
+            - arn:aws:s3:::winstonexport/*
         - Effect: Allow
           Action:
             - ses:SendEmail
@@ -33,9 +35,7 @@ provider:
   environment:
     username: ${env:USERNAME}
     password: ${env:PASSWORD}
-    sage: ${env:SAGE}
-    rio: ${env:RIO}
-    redington: ${env:REDINGTON}
+    winston: ${env:DUOPLANE_WINSTON}
 
 functions:
   export:
@@ -44,17 +44,11 @@ functions:
     timeout: 60
     events:
       - schedule: cron(0 21 * * ? *)
-  filter:
-    handler: handler.filter
-    memorySize: 128
-    timeout: 60
-    events:
-      - sns:
-          arn: arn:aws:sns:us-east-1:946184463079:farbankExport-export
+
   email:
     handler: handler.email
     memorySize: 128
     timeout: 60
     events:
       - sns:
-          arn: arn:aws:sns:us-east-1:946184463079:farbankExport-filter
+          arn: arn:aws:sns:us-east-1:946184463079:winstonExport-export

@@ -1,54 +1,41 @@
-const chromium = require('chrome-aws-lambda');
-const fs = require('fs').promises;
+const { wcGet } = require('./integrations/woocommerce');
+const XLSX = require('xlsx');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const s3Client = new S3Client({ region: 'us-east-1' });
 
+const getInventoryData = async () => {
+  let inventoryData = [];
+  const { data: products } = await wcGet(`products?per_page=100&status=publish&page=1&category=210,33`);
+
+  const filteredProducts = products.filter(product => !product.name.includes('Sale') && !product.name.includes('Seconds'));
+
+  let counter = 0;
+  const total = filteredProducts.length;
+  for (const product of filteredProducts) {
+    console.log(`Processing ${++counter}/${total}: ${product.name}`);
+    const { data: productVariations } = await wcGet(`products/${product.id}/variations?per_page=100`);
+
+    for (const productVariation of productVariations) {
+      const { sku, stock_quantity: quantity } = productVariation;
+      const title = product.name + ' ' + productVariation?.attributes.map(attribute => attribute?.option).join(' ');
+      inventoryData = [...inventoryData, { sku, title, quantity }];
+    }
+  }
+  console.log(inventoryData);
+  return inventoryData;
+};
+
 module.exports = async event => {
-  const browser = await chromium.puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath,
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true,
-  });
-
-  const [page] = await browser.pages();
-  await page.setViewport({ width: 1280, height: 800 });
-
-  await page._client.send('Page.setDownloadBehavior', {
-    behavior: 'allow',
-    // downloadPath: './downloads',
-    downloadPath: '/tmp/',
-  });
-
-  // Authenticate
-  await page.goto('https://orders.farbank.com');
-  await page.type('#Input_UserName', process.env.username);
-  await page.type('#Input_Password', process.env.password);
-  await page.click('button.btn-success');
-  await page.waitForTimeout(500);
-  // await page.waitForNetworkIdle();
-
-  const downloadUrl = 'https://orders.farbank.com/InventoryExport';
-
-  await page
-    .goto(downloadUrl, { waitUntil: 'networkidle0' })
-    .catch(error => console.log(error));
-
-  await page.waitForTimeout(500);
-  browser.close();
-
-  // const files = await fs.readdir('downloads/');
-  const files = await fs.readdir('/tmp/');
-  const file = files.find(file => file.includes('Inventory_'));
-  const fileData = await fs.readFile(`/tmp/${file}`);
-
-  const timestamp = new Date(Date.now()).toISOString().replace(/:/g, '-');
+  const inventoryData = await getInventoryData();
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(inventoryData);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory');
+  const fileData = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
   try {
     const results = await s3Client.send(
       new PutObjectCommand({
-        Bucket: 'farbankexport', // The name of the bucket. For example, 'sample_bucket_101'.
+        Bucket: 'winstonexport', // The name of the bucket. For example, 'sample_bucket_101'.
         Key: `inventory.xlsx`, // The name of the object. For example, 'sample_upload.txt'.
         Body: fileData, // The content of the object. For example, 'Hello world!".
         ACL: 'public-read',
@@ -66,7 +53,7 @@ module.exports = async event => {
     statusCode: 200,
     body: JSON.stringify(
       {
-        message: 'Farbank EOS Inventory Export Completed',
+        message: 'Winston Inventory Export Completed',
         input: event,
       },
       null,
